@@ -21,6 +21,8 @@ type Options struct {
 	MaxDepth int
 	// Async enables asynchronous scraping
 	Async bool
+	// MaxParallelRequests sets the maximum number of parallel requests
+	MaxParallelRequests int
 	// MaxRetries specifies the maximum number of retries for requests
 	MaxRetries int
 }
@@ -59,12 +61,20 @@ func New(opts Options) *Scraper {
 	if opts.MaxRetries <= 0 {
 		opts.MaxRetries = 5
 	}
+	if opts.MaxParallelRequests <= 0 {
+		opts.MaxParallelRequests = 4
+	}
+
 	return &Scraper{options: opts}
 }
 
 // NewDefault creates a new Scraper instance with default options
 func NewDefault() *Scraper {
-	return New(Options{})
+	return New(Options{
+		UserAgent:           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+		MaxRetries:          5,
+		MaxParallelRequests: 4,
+	})
 }
 
 // createCollector creates a new colly collector with the scraper's options
@@ -131,7 +141,7 @@ func (s *Scraper) ScrapeHTML(url string) (string, error) {
 		}
 
 		// If error is not 429, don't retry
-		if lastError != nil && statusCode != 429 {
+		if statusCode != 429 {
 			return "", fmt.Errorf("failed to visit %s: %w", url, lastError)
 		}
 
@@ -209,13 +219,16 @@ func (s *Scraper) scrapePageSequential(url, selector, nextPageSelector string, r
 
 func (s *Scraper) scrapePageParallel(url, selector, lastPageSelector, nextPageURLPattern string, resultsChan chan<- Result) {
 	currentURL := url
+	pagesChan := make(chan int)
 	wg := sync.WaitGroup{}
 
-	worker := func(page int) {
+	worker := func() {
 		defer wg.Done()
-		pageURL := strings.ReplaceAll(nextPageURLPattern, "::page::", strconv.Itoa(page))
-		pageURL = GetFullURL(currentURL, pageURL)
-		s.pushPageContents(pageURL, selector, resultsChan)
+		for page := range pagesChan {
+			pageURL := strings.ReplaceAll(nextPageURLPattern, "::page::", strconv.Itoa(page))
+			pageURL = GetFullURL(currentURL, pageURL)
+			s.pushPageContents(pageURL, selector, resultsChan)
+		}
 	}
 
 	// Manually get the first page to determine total pages
@@ -228,12 +241,18 @@ func (s *Scraper) scrapePageParallel(url, selector, lastPageSelector, nextPageUR
 		return
 	}
 
-	// Start workers for remaining pages
-	for page := 2; page <= lastPage; page++ {
+	// Start workers to process pages in parallel
+	for i := 0; i < s.options.MaxParallelRequests; i++ {
 		wg.Add(1)
-		go worker(page)
+		go worker()
 	}
 
+	// Enqueue pages to be scraped
+	for page := 2; page <= lastPage; page++ {
+		pagesChan <- page
+	}
+
+	close(pagesChan)
 	wg.Wait()
 	close(resultsChan)
 }
