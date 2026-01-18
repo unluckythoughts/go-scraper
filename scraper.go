@@ -115,7 +115,7 @@ func (s *Scraper) ScrapeHTML(url string) (string, error) {
 	var htmlContent string
 	var lastError error
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 1; attempt <= maxRetries; attempt++ {
 		var statusCode int
 
 		c := s.createCollector()
@@ -146,7 +146,7 @@ func (s *Scraper) ScrapeHTML(url string) (string, error) {
 		}
 
 		// Only sleep if we're going to retry
-		if attempt < maxRetries-1 {
+		if attempt < maxRetries {
 			backoffDuration := initialBackoff * (1 << attempt)
 			time.Sleep(backoffDuration + time.Duration(rand.Intn(1000))*time.Millisecond)
 		}
