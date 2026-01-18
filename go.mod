@@ -1,4 +1,4 @@
-module github.com/unluckythoughts/go-scrapper
+module github.com/unluckythoughts/go-scraper
 
 go 1.24.0
 
