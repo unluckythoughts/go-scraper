@@ -1,7 +1,6 @@
 package scraper
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,7 +56,7 @@ func TestScrapeHTML_Success(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<html><body><h1>Test</h1></body></html>"))
+		_, _ = w.Write([]byte("<html><body><h1>Test</h1></body></html>"))
 	}))
 	defer server.Close()
 
@@ -78,7 +77,7 @@ func TestScrapeHTML_Success(t *testing.T) {
 func TestScrapeHTML_404Error(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("Not Found"))
+		_, _ = w.Write([]byte("Not Found"))
 	}))
 	defer server.Close()
 
@@ -105,7 +104,7 @@ func TestScrapeHTML_RetryOn429(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<html><body>Success after retries</body></html>"))
+		_, _ = w.Write([]byte("<html><body>Success after retries</body></html>"))
 	}))
 	defer server.Close()
 
@@ -169,7 +168,7 @@ func TestScrapeOuterHTML(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(htmlContent))
+		_, _ = w.Write([]byte(htmlContent))
 	}))
 	defer server.Close()
 
@@ -196,7 +195,7 @@ func TestScrapeOuterHTML_NoMatch(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(htmlContent))
+		_, _ = w.Write([]byte(htmlContent))
 	}))
 	defer server.Close()
 
@@ -233,7 +232,7 @@ func TestScrapePaginated_Sequential(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(html))
+		_, _ = w.Write([]byte(html))
 	}))
 	defer server.Close()
 
@@ -296,7 +295,7 @@ func TestScrapePaginated_Parallel(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(html))
+		_, _ = w.Write([]byte(html))
 	}))
 	defer server.Close()
 
@@ -368,7 +367,7 @@ func TestScrapePaginated_NoNextPage(t *testing.T) {
 		</body></html>`
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(html))
+		_, _ = w.Write([]byte(html))
 	}))
 	defer server.Close()
 
@@ -411,7 +410,7 @@ func TestOptions_DefaultUserAgent(t *testing.T) {
 func BenchmarkScrapeHTML(b *testing.B) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<html><body>Benchmark test</body></html>"))
+		_, _ = w.Write([]byte("<html><body>Benchmark test</body></html>"))
 	}))
 	defer server.Close()
 
@@ -430,12 +429,12 @@ func BenchmarkScrapeHTML(b *testing.B) {
 // BenchmarkScrapeOuterHTML benchmarks the ScrapeOuterHTML function
 func BenchmarkScrapeOuterHTML(b *testing.B) {
 	htmlContent := `<html><body>` +
-		fmt.Sprintf("%s", strings.Repeat("<div class='item'>Test</div>", 100)) +
+		strings.Repeat("<div class='item'>Test</div>", 100) +
 		`</body></html>`
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(htmlContent))
+		_, _ = w.Write([]byte(htmlContent))
 	}))
 	defer server.Close()
 

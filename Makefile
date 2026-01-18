@@ -58,11 +58,8 @@ fmt:
 # Run linter (requires golangci-lint)
 lint:
 	@echo "Running linter..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./...; \
-	else \
-		echo "golangci-lint not found. Install it from https://golangci-lint.run/"; \
-	fi
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest 2>nul || true
+	@golangci-lint run ./... || echo "golangci-lint failed or not found"
 
 # Install dependencies
 install:

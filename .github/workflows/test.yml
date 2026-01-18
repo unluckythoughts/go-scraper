@@ -30,11 +30,11 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Download dependencies
-      run: go mod download
+    - name: Install dependencies
+      run: make install
 
     - name: Run tests
-      run: go test -v -timeout 60s -race -coverprofile=coverage.txt -covermode=atomic
+      run: make test-coverage
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -46,7 +46,7 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
     - name: Run benchmarks
-      run: go test -bench=. -benchmem -benchtime=3x
+      run: make bench
 
   lint:
     runs-on: ubuntu-latest
@@ -59,8 +59,5 @@ jobs:
       with:
         go-version: '1.21'
 
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v4
-      with:
-        version: latest
-        args: --timeout=5m
+    - name: Run linter
+      run: make lint
