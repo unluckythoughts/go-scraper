@@ -1,0 +1,82 @@
+name: Create Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag (e.g., v0.1.1, v1.0.0)'
+        required: true
+        type: string
+      message:
+        description: 'Tag message (optional)'
+        required: false
+        type: string
+        default: 'Release'
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'scraper.go'
+      - 'utils.go'
+      - 'go.mod'
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run tests
+        run: |
+          go test -v -timeout 60s
+
+      - name: Create manual tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          VERSION="${{ github.event.inputs.version }}"
+          MESSAGE="${{ github.event.inputs.message }}"
+          
+          if [ -z "$MESSAGE" ]; then
+            MESSAGE="Release $VERSION"
+          fi
+          
+          git tag -a "$VERSION" -m "$MESSAGE"
+          git push origin "$VERSION"
+          
+          echo "✅ Tag $VERSION created and pushed successfully"
+
+      - name: Update latest tag
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Get the latest version tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          
+          # Delete remote latest tag if it exists
+          git push origin :refs/tags/latest 2>/dev/null || true
+          
+          # Delete local latest tag if it exists
+          git tag -d latest 2>/dev/null || true
+          
+          # Create new latest tag pointing to current commit
+          git tag -a latest -m "Latest stable release (based on $LATEST_TAG)"
+          git push origin latest
+          
+          echo "✅ Latest tag updated to commit $(git rev-parse --short HEAD)"
