@@ -91,6 +91,9 @@ func getResults(htmlText, selector string, fn ExtractionFunc) error {
 // GetOuterHTML extracts the outer HTML of elements matching the given CSS selector from HTML text
 // Returns a slice of outer HTML strings for all matching elements
 func GetOuterHTML(htmlText, selector string) ([]string, error) {
+	if selector == "" {
+		return []string{}, nil
+	}
 	var results []string
 	err := getResults(htmlText, selector, gethtmls(&results))
 	if err != nil {
@@ -103,6 +106,9 @@ func GetOuterHTML(htmlText, selector string) ([]string, error) {
 // GetText extracts the text content of elements matching the given CSS selector from HTML text
 // Returns a slice of text strings for all matching elements
 func GetText(htmlText, selector string) ([]string, error) {
+	if selector == "" {
+		return []string{}, nil
+	}
 	var results []string
 	err := getResults(htmlText, selector, getTexts(&results, selector, false))
 	if err != nil {
@@ -115,6 +121,9 @@ func GetText(htmlText, selector string) ([]string, error) {
 // GetTextSingle extracts the text content of the first element matching the given CSS selector
 // Returns empty string if no match found
 func GetTextSingle(htmlText, selector string) (string, error) {
+	if selector == "" {
+		return "", nil
+	}
 	var results []string
 	err := getResults(htmlText, selector, getTexts(&results, selector, true))
 	if err != nil {
