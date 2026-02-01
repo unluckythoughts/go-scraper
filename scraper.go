@@ -3,11 +3,13 @@ package scraper
 import (
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-rod/rod"
 	"github.com/gocolly/colly/v2"
 )
 
@@ -103,8 +105,96 @@ func (s *Scraper) createCollector(additionalOpts ...colly.CollectorOption) *coll
 	return c
 }
 
+// isBotChallenge detects if the HTML content contains a bot challenge or CAPTCHA
+func isBotChallenge(html string) bool {
+	// Common indicators of bot challenges
+	indicators := []string{
+		"captcha",
+		"CAPTCHA",
+		"cf-challenge",
+		"cloudflare",
+		"Please verify you are a human",
+		"Access denied",
+		"Security check",
+		"challenge-platform",
+		"Just a moment",
+		"Checking your browser",
+		"DDoS protection",
+		"are you a robot",
+		"bot detection",
+	}
+
+	htmlLower := strings.ToLower(html)
+	for _, indicator := range indicators {
+		if strings.Contains(htmlLower, strings.ToLower(indicator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// solveWithRod uses rod to load the page in a real browser, solve challenges, and return cookies
+func (s *Scraper) solveWithRod(url string) ([]*http.Cookie, string, error) {
+	browser := rod.New().MustConnect()
+	defer browser.MustClose()
+
+	page := browser.MustPage(url)
+	defer page.MustClose()
+
+	// Wait for the page to stabilize (adjust timeout as needed)
+	// This gives time for CAPTCHA/challenge to load and potentially auto-solve
+	page.MustWaitStable()
+
+	// Wait a bit longer for potential redirects or auto-solving mechanisms
+	time.Sleep(5 * time.Second)
+
+	// Check if we still have a challenge after waiting
+	html, err := page.HTML()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get HTML from rod: %w", err)
+	}
+
+	// If still a bot challenge, wait longer (user might need to solve CAPTCHA manually)
+	if isBotChallenge(html) {
+		// Wait up to 30 seconds for manual intervention or auto-solving
+		for i := 0; i < 6; i++ {
+			time.Sleep(5 * time.Second)
+			html, err = page.HTML()
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to get HTML from rod: %w", err)
+			}
+			if !isBotChallenge(html) {
+				break
+			}
+		}
+	}
+
+	// Extract cookies from the browser
+	cookies, err := page.Cookies([]string{url})
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get cookies from rod: %w", err)
+	}
+
+	// Convert rod cookies to http.Cookie format
+	httpCookies := make([]*http.Cookie, len(cookies))
+	for i, cookie := range cookies {
+		httpCookies[i] = &http.Cookie{
+			Name:     cookie.Name,
+			Value:    cookie.Value,
+			Path:     cookie.Path,
+			Domain:   cookie.Domain,
+			Expires:  time.Unix(int64(cookie.Expires), 0),
+			Secure:   cookie.Secure,
+			HttpOnly: cookie.HTTPOnly,
+		}
+	}
+
+	return httpCookies, html, nil
+}
+
 // ScrapeHTML fetches and returns the complete HTML content for a given URL
 // Implements exponential backoff retry for 429 (Too Many Requests) status codes
+// Detects bot challenges and uses rod to solve CAPTCHAs and obtain cookies
 func (s *Scraper) ScrapeHTML(url string) (string, error) {
 	const initialBackoff = 1 * time.Second
 	maxRetries := s.options.MaxRetries
@@ -117,8 +207,18 @@ func (s *Scraper) ScrapeHTML(url string) (string, error) {
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		var statusCode int
+		var cookies []*http.Cookie
 
 		c := s.createCollector()
+
+		// Set cookies if we have them from a previous rod session
+		if len(cookies) > 0 {
+			c.OnRequest(func(r *colly.Request) {
+				for _, cookie := range cookies {
+					r.Headers.Set("Cookie", fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
+				}
+			})
+		}
 
 		c.OnResponse(func(r *colly.Response) {
 			statusCode = r.StatusCode
@@ -135,8 +235,22 @@ func (s *Scraper) ScrapeHTML(url string) (string, error) {
 
 		lastError = c.Visit(url)
 
-		// If successful, return immediately
+		// If successful, check for bot challenge
 		if lastError == nil && statusCode == 200 {
+			// Check if we hit a bot challenge
+			if isBotChallenge(htmlContent) {
+				// Use rod to solve the challenge
+				var err error
+				cookies, htmlContent, err = s.solveWithRod(url)
+				if err != nil {
+					return "", fmt.Errorf("failed to solve bot challenge with rod: %w", err)
+				}
+
+				// If still a bot challenge after rod, return error
+				if isBotChallenge(htmlContent) {
+					return "", fmt.Errorf("bot challenge persists after rod attempt")
+				}
+			}
 			return htmlContent, nil
 		}
 
